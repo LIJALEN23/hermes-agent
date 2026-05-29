@@ -2110,8 +2110,19 @@ class TestSendVoiceReplyCleanup:
             "file_path": str(audio_file),
         })
 
-        with patch("gateway.run.asyncio.to_thread", new_callable=AsyncMock, return_value=tts_result), \
-             patch("hermes_agent_tts.tts_tool._strip_markdown_for_tts", return_value="hello"), \
+        # Provide a TTS provider via the registry so _send_voice_reply doesn't
+        # bail at the "if _tts_entry is None: return" guard.
+        from agent.plugin_registries import registries, ToolProviderEntry
+        mock_tts_provider = ToolProviderEntry(
+            name="tts",
+            tool_functions={
+                "text_to_speech_tool": lambda *a, **kw: tts_result,
+                "_strip_markdown_for_tts": lambda text: "hello",
+            },
+            check_fn=lambda: True,
+        )
+
+        with patch.object(registries, "get_tool_provider", return_value=mock_tts_provider), \
              patch("os.path.isfile", return_value=True), \
              patch("os.makedirs"):
             await runner._send_voice_reply(event, "Hello world")
